@@ -1,7 +1,7 @@
 <?php
 require_once('nikic-PHP-Parser/lib/bootstrap.php');
 class Printer {
-	public $statements;
+	public $functions;
 	
 	public static function getUID($namespace = ''){
 		return $namespace . strtoupper(
@@ -24,9 +24,11 @@ class Printer {
 		$this->script = $script;
 		$parser = new PHPParser_Parser(new PHPParser_Lexer);
 		try {
-			$this->output = $this->printStatements(
+			$output = $this->printStatements(
 				$parser->parse(file_get_contents($script))
 			);
+			$functions = trim($this->buildFunctions());
+			$this->output = $functions . "\n" . $output;
 		}
 		catch (PHPParser_Error $e) {
 			echo 'Parse Error: ', $e->getMessage();
@@ -36,7 +38,11 @@ class Printer {
 	public function printStatements($statements){
 		$ret = array();
 		foreach($statements as $k => $v){
-			$ret[] = $this->printStatement($v);
+			$temp = $this->printStatement($v);
+			if(is_array($temp)){
+				$temp = $temp[1];
+			}
+			if(!empty($temp))$ret[] = $temp;
 		}
 		return implode("\n",$ret);
 	}
@@ -203,6 +209,49 @@ class Printer {
 		return implode("\n",$ret);
 	}
 	
+	public function print_Stmt_Function($node){
+		$name = $node->name;
+		$params = array();
+		foreach($node->params as $param){
+			$params[] = $param->name;
+		}
+		$this->functions[$name] = array(
+			'label' => self::getUID('function'),
+			'params' => $params,
+			'contents' => $node->stmts,
+			'hooks' => array()
+		);
+		return '';
+	}
+	
+	public function buildFunctions(){
+		$functionsEnd = self::getUID();
+		$text = array();
+		$text[] = '~\Goto(' . $functionsEnd . ')~';
+		foreach($this->functions as $function){
+			$text[] = '~\Label(' . $function['label'] . ')~';
+			foreach($function['hooks'] as $hook){
+				$uid = self::getUID();
+				$uidEnd = self::getUID();
+				$text[] = '~\GotoIf(' . $function['label'] . '_returnTo|' . $hook['returnTo'] . '|' . $uid . ')~';
+				$text[] = '~\Goto(' . $uidEnd . ')~';
+				$text[] = '~\Label(' . $uid . ')~';
+				$contents =  $this->printStatements($function['contents']);
+				$contents = str_replace(
+					$function['params'],
+					array_values($hook['paramAssignments']),
+					$contents
+				);
+				$contents = str_replace('__RETURN__',$hook['returnVar'],$contents);
+				$text[] = $contents;
+				$text[] = '~\Goto(' . $hook['returnTo'] . ')~';
+				$text[] = '~\Label(' . $uidEnd . ')~';
+			}
+		}
+		$text[] = '~\Label(' . $functionsEnd . ')~';
+		return implode("\n",$text);
+	}
+	
 	public function processCond($cond){
 		$variable = uniqid();
 		$method = $cond->name->parts[0];
@@ -240,7 +289,9 @@ class Printer {
 					$method
 				);
 			}
-			else if($method->args[0]->value->getType() != 'Expr_Variable'){
+			else if(
+				$method->args[0]->value->getType() != 'Expr_Variable' && $method->args[0]->value->getType() != 'Expr_Assign'
+			){
 				$this->_throwErrorForNode(
 					'getLength requires argument 1 to be a variable, instead a '.
 					$method->args[0]->value->getType() . ' was passed.',
@@ -258,6 +309,32 @@ class Printer {
 		}
 		else if($name == 'file_get_contents'){
 			$text[] = '~\QueryExternalServer(' . $args[0][0] . '|' . $retVar . ')~';
+		}
+		else if(isset($this->functions[$name])){
+			$def = &$this->functions[$name];
+			$returnTo = self::getUID();
+			$paramAssignments = array();
+			foreach($args as $key => &$arg){
+				if(isset($def['params'][$key])){
+					if($arg[0] == $arg[1] && $method->args[$key]->value->getType() != 'Expr_Variable'){
+						$_tmpUid = self::getUID();
+						$text[] = '~\SetVar('.$_tmpUid.'|'.$arg[0].')~';
+						$arg[0] = $_tmpUid;
+					}
+					$paramAssignments[$def['params'][$key]] = $arg[0];
+				}
+			}
+			$text[] = '~\SetVar(' . $def['label'] . '_returnTo|' . $returnTo . ')~';
+			$text[] = '~\Goto(' . $def['label'] . ')~';
+			$text[] = '~\Label(' . $returnTo . ')~';
+			$def['hooks'][] = array(
+				'returnTo' => $returnTo,
+				'paramAssignments' => $paramAssignments,
+				'returnVar' => $retVar
+			);
+			//if(!$assignTo){
+			//	return implode("\n",$text);
+			//}
 		}
 		else {
 			$ret =  '~\\' . $name . '(';

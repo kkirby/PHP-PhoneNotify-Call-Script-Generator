@@ -38,13 +38,12 @@ the call script from the code inside script.php.
 
 ##What's not supported but my have support in the future?
 1. Double and/or conditionals
-2. User defined functions
-3. Native Variable Increasing
+2. Native Variable Increasing
 
     $i++
     
-4. Do/While loops
-5. break/continue statements in while loops.
+3. Do/While loops
+4. break/continue statements in while loops.
 
 ##What's not supported and never will be?
 1. Classes
@@ -55,6 +54,43 @@ the call script from the code inside script.php.
 1. file\_get_contents
 2. getDigits
 3. getLength
+
+##Can I make my own functions?
+Surprisingly, yes, you can! The implementation to create
+user functions is incredibly limited due to the fact
+that you cannot assign a variable with the value of another
+variable. However, if you look passed that, then
+everything else seems to look pretty delicious.
+
+To make a function, simply define it like you would
+any other PHP function. Then, later in your PHP
+code, you can make a call to your PHP function.
+
+One caveat, however, is RETURN is not implemented.
+The reason for this is because variables cannot be
+assigned to other variables. To work around this,
+instead of calling RETURN, assign the value of $\__RETURN\__
+to the value you want your function to return.
+Also, this means that you cannot end the control
+flow of the function by using RETURN.
+
+###What if I really, really want to assign the value of variable to that of another variable?
+The only work around that I've seen is to create a loopback
+server that prints the value of whatever is passed to \_GET and
+then make a remote call to your server.
+
+Your server would have the following code:
+
+    echo $_GET['input'];
+    
+End then your Call Script would have the following command:
+
+    $myFirstVar = 'Hello.';
+    $myNewVar = file\_get_contents('http://myserver/loopback.php?input=[myFirstVar]');
+    
+###Why don't you just do this for us on the backend and use your own server?
+Because making a remote call isn't light and will slow down the
+execution of the script.
 
 ##What about all the other PhoneNotify functions?
 Those are supported too, you just have to use them
