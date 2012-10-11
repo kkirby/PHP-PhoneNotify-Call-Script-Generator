@@ -21,6 +21,7 @@ class Printer {
 	}
 	
 	public function __construct($script){
+		$this->script = $script;
 		$parser = new PHPParser_Parser(new PHPParser_Lexer);
 		try {
 			$this->output = $this->printStatements(
@@ -45,7 +46,52 @@ class Printer {
 	}
 	
 	public function print_Stmt_Echo($node){
-		return $node->exprs[0]->value;
+		$res = $this->print_Stmt_Echo_Helper($node->exprs[0]);
+		return trim(implode("\n",$res));
+	}
+	
+	protected function print_Stmt_Echo_Helper($node){
+		$preExpressions = array();
+		$ret = array();
+		$type = $node->getType();
+		if($type == 'Expr_Variable'){
+			$ret[] = '~\VariableToTTS(' . $this->printStatement($node) . ')~';
+		}
+		else if($type == 'Scalar_Encapsed'){
+			foreach($node->parts as $part){
+				if(!is_object($part)){
+					$ret[] = $part;
+				}
+				else {
+					$res = $this->print_Stmt_Echo_Helper($part);
+					if(!empty($res[0])){
+						$preExpressions[] = $res[0];
+					}
+					$ret[] = $res[1];
+				}
+			}
+		}
+		else if($type == 'Expr_Concat'){
+			$res = $this->print_Stmt_Echo_Helper($node->left);
+			if(!empty($res[0])){
+				$preExpressions[] = $res[0];
+			}
+			$ret[] = $res[1];
+			$res = $this->print_Stmt_Echo_Helper($node->right);
+			if(!empty($res[0])){
+				$preExpressions[] = $res[0];
+			}
+			$ret[] = $res[1];
+		}
+		else if($type == 'Expr_FuncCall'){
+			list($varName,$statement) = $this->printStatement($node);
+			$preExpressions[] = $statement;
+			$ret[] = '~\VariableToTTS(' . $varName . ')~';
+		}
+		else {
+			$ret[] = $this->printStatement($node);
+		}
+		return array(implode("\n",$preExpressions),implode("\n",$ret));
 	}
 	
 	public function print_Expr_Assign($node,$returnName = false){
@@ -188,6 +234,20 @@ class Printer {
 		}
 		
 		if($name == 'getLength'){
+			if(count($args) < 1){
+				$this->_throwErrorForNode(
+					'getLength requires at least one argument. No arguments passed.',
+					$method
+				);
+			}
+			else if($method->args[0]->value->getType() != 'Expr_Variable'){
+				$this->_throwErrorForNode(
+					'getLength requires argument 1 to be a variable, instead a '.
+					$method->args[0]->value->getType() . ' was passed.',
+					$method
+				);
+			}
+			//else if($method->args[0]->getType() != )
 			$text[] = '~\GetVariableLength(' . $args[0][0] . '|' . $retVar . ')~';
 		}
 		else if($name == 'getDigits'){
@@ -224,31 +284,12 @@ class Printer {
 			}
 			return array($ret,$ret);
 		}
-		/*else if($arg->value->getType() == 'Expr_Variable'){
-			$ret = $this->printStatement($arg->value);
-			return array($ret,$ret);
-			return array($arg->value->name,$arg->value->name);
-		}
-		else if($arg->value->getType() == 'Expr_ConstFetch'){
-			$ret = $this->printStatement($arg->value);
-			return array($ret,$ret);
-			return array($arg->value->name->parts[0],$arg->value->name->parts[0]);
-		}
-		else if($arg->value->getType() == 'Scalar_LNumber'){
-			$ret = $this->printStatement($arg->value);
-			return array($ret,$ret);
-		}
-		else if($arg->value->getType() == 'Scalar_String'){
-			$ret = $this->printStatement($arg->value);
-			return array($ret,$ret);
-		}
-		/*else {
-			die();
-			var_dump($arg);
-			$retVar = self::getUID();
-			$expression = $arg->value;
-			return $this->processMethod($expression,$retVar);
-		}*/
+	}
+	
+	protected function _throwErrorForNode($message,$node){
+		throw new Exception('PHP Error: ' . $message . ' In ' . $this->script . ' on line ' . $node->getLine() . '.');
 	}
 }
+
+require_once('test.php');
 ?>

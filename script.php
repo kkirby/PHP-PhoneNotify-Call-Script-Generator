@@ -2,7 +2,7 @@
 ActOnDigitPress(false);
 $a = true;
 while($a == true){
-	echo "Press one for the first menu, two for the second menu followed by pound or hash.";
+	echo "Press one for the first menu, two for the second menu, and 3 for the current time, followed by pound.";
 	$number = getDigits();
 	if($number == 1){
 		echo "First Menu";
@@ -31,6 +31,11 @@ while($a == true){
 		else {
 			echo "Not a valid entry.";
 		}
+	}
+	else if($number == 3){
+		echo 'Today is ' .
+			file_get_contents('http://www.timeapi.org/utc/now?format=%25A+%25B+%25d+%25Y') .
+			'. The time is ' . file_get_contents('http://www.timeapi.org/utc/now?format=%25I+%25M+%25p') . '.';
 	}
 	else {
 		echo "N/A";

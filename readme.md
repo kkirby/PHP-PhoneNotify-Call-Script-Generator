@@ -20,17 +20,21 @@ the call script from the code inside script.php.
 
 ##What's supported?
 1. Echo
-2. if/else conditionals comparing by equals and not equals.
-3. Variable assignment
-4. Nested Expressions
+2. Echo with variable and method call support.
+
+    echo "Hello $name, did you know that your account balance is" . file\_get_contents('http://myserver.com') . '?';
+
+3. if/else conditionals comparing by equals and not equals.
+4. Variable assignment
+5. Nested Expressions
 
     $a = getLength($digits = getDigits());
     if(getLength($digits = getDigits()) == 5){
         // Do something with $digits
     }
 
-5. While loops
-6. file\_get_contents
+6. While loops
+7. file\_get_contents
 
 ##What's not supported but my have support in the future?
 1. Double and/or conditionals
@@ -38,12 +42,13 @@ the call script from the code inside script.php.
 3. Native Variable Increasing
 
     $i++
-4. echo with variables
+    
+4. Do/While loops
 
 ##What's not supported and never will be?
 1. Classes
 2. All of PHPs built in functions, for obvious reasons.
-3. Variable concatenating
+3. Variable concatenating as arguments to functions and variable assignment.
 
 ##What functions can I use?
 1. file\_get_contents
