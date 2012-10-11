@@ -44,6 +44,7 @@ the call script from the code inside script.php.
     $i++
     
 4. Do/While loops
+5. break/continue statements in while loops.
 
 ##What's not supported and never will be?
 1. Classes
