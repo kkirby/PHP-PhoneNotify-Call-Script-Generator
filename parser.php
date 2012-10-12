@@ -2,6 +2,24 @@
 require_once('nikic-PHP-Parser/lib/bootstrap.php');
 class Printer {
 	public $functions;
+	public $functionStack = array();
+	
+	public function pushFunctionToCallStack($name,$calledNode){
+		$this->functionStack[] = array($name,$calledNode);
+	}
+	
+	public function popFunctionInCallStack(){
+		array_pop($this->functionStack);
+	}
+	
+	public function isFunctionInCallStack($function){
+		foreach($this->functionStack as $stackItem){
+			if($stackItem[0] == $function){
+				return true;
+			}
+		}
+		return false;
+	}
 	
 	public static function getUID($namespace = ''){
 		return $namespace . strtoupper(
@@ -27,18 +45,17 @@ class Printer {
 			$output = $this->printStatements(
 				$parser->parse(file_get_contents($script))
 			);
-			$functions = trim($this->buildFunctions());
-			$this->output = $functions . "\n" . $output;
+			$this->output = $output;
 		}
 		catch (PHPParser_Error $e) {
 			echo 'Parse Error: ', $e->getMessage();
 		}
 	}
 	
-	public function printStatements($statements){
+	public function printStatements($statements,$returnVar = false){
 		$ret = array();
 		foreach($statements as $k => $v){
-			$temp = $this->printStatement($v);
+			$temp = $this->printStatement($v,$returnVar);
 			if(is_array($temp)){
 				$temp = $temp[1];
 			}
@@ -47,8 +64,8 @@ class Printer {
 		return implode("\n",$ret);
 	}
 	
-	public function printStatement($statementNode){
-		return $this->{'print_' . $statementNode->getType()}($statementNode);
+	public function printStatement($statementNode,$returnVar = false){
+		return $this->{'print_' . $statementNode->getType()}($statementNode,$returnVar);
 	}
 	
 	public function print_Stmt_Echo($node){
@@ -139,11 +156,11 @@ class Printer {
 	
 	public function print_Stmt_If($node){
 		$ret = array();
-		$labelStatement = self::getUID('if_statement');
-		$labelEnd = self::getUID('if_end');
-		$labelTotalEnd = self::getUID('if_total_end');
-		$methodCallLeft = $this->printStatement($node->cond->left);
-		$methodCallRight = $this->printStatement($node->cond->right);
+		$labelStatement = self::getUID('lbl_if_statement');
+		$labelEnd = self::getUID('lbl_if_end');
+		$labelTotalEnd = self::getUID('lbl_if_total_end');
+		$methodCallLeft = $this->printStatement($node->cond->left,true);
+		$methodCallRight = $this->printStatement($node->cond->right,true);
 		if(is_array($methodCallLeft)){
 			$ret[] = $methodCallLeft[1];
 			$condVarLeft = $methodCallLeft[0];
@@ -162,6 +179,10 @@ class Printer {
 			$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $labelStatement . ')~';
 			$ret[] = '~\Goto(' . $labelEnd . ')~';
 		}
+		else if($node->cond->getType() == 'Expr_NotEqual'){
+			$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $labelEnd . ')~';
+			$ret[] = '~\Goto(' . $labelStatement . ')~';
+		}
 		$ret[] = '~\Label(' . $labelStatement . ')~';
 		$ret[] = $this->printStatements($node->stmts);
 		$ret[] = '~\Goto(' . $labelTotalEnd . ')~';
@@ -175,12 +196,12 @@ class Printer {
 	
 	public function print_Stmt_While($node){
 		$ret = array();
-		$labelStart = self::getUID('while_start');
-		$labelCond = self::getUID('while_cond');
-		$labelEnd = self::getUID('while_end');
+		$labelStart = self::getUID('lbl_while_start');
+		$labelCond = self::getUID('lbl_while_cond');
+		$labelEnd = self::getUID('lbl_while_end');
 		$ret[] = '~\Label(' . $labelCond . ')~';
-		$methodCallLeft = $this->printStatement($node->cond->left);
-		$methodCallRight = $this->printStatement($node->cond->right);
+		$methodCallLeft = $this->printStatement($node->cond->left,true);
+		$methodCallRight = $this->printStatement($node->cond->right,true);
 		if(is_array($methodCallLeft)){
 			$ret[] = $methodCallLeft[1];
 			$condVarLeft = $methodCallLeft[0];
@@ -218,47 +239,34 @@ class Printer {
 		$this->functions[$name] = array(
 			'label' => self::getUID('function'),
 			'params' => $params,
-			'contents' => $node->stmts,
-			'hooks' => array()
+			'contents' => $node->stmts
 		);
 		return '';
 	}
 	
-	public function buildFunctions(){
-		$functionsEnd = self::getUID();
-		$text = array();
-		$text[] = '~\Goto(' . $functionsEnd . ')~';
-		foreach($this->functions as $function){
-			$text[] = '~\Label(' . $function['label'] . ')~';
-			foreach($function['hooks'] as $hook){
-				$uid = self::getUID();
-				$uidEnd = self::getUID();
-				$text[] = '~\GotoIf(' . $function['label'] . '_returnTo|' . $hook['returnTo'] . '|' . $uid . ')~';
-				$text[] = '~\Goto(' . $uidEnd . ')~';
-				$text[] = '~\Label(' . $uid . ')~';
-				$contents =  $this->printStatements($function['contents']);
-				$contents = str_replace(
-					$function['params'],
-					array_values($hook['paramAssignments']),
-					$contents
-				);
-				$contents = str_replace('__RETURN__',$hook['returnVar'],$contents);
-				$text[] = $contents;
-				$text[] = '~\Goto(' . $hook['returnTo'] . ')~';
-				$text[] = '~\Label(' . $uidEnd . ')~';
+	public function buildFunction($name,$paramAssignments,$retVar,$calledNode){
+		if($this->isFunctionInCallStack($name)){
+			$stack = array();
+			foreach($this->functionStack as $stackItem){
+				$stack[] = 'Function ' . $stackItem[0] . '() on line ' . $stackItem[1]->getLine();
 			}
+			$this->_throwErrorForNode(
+				"Recursive function calling is not allowed.\nCall Stack: \n".
+				implode("\n",$stack),
+				$calledNode
+			);
 		}
-		$text[] = '~\Label(' . $functionsEnd . ')~';
-		return implode("\n",$text);
-	}
-	
-	public function processCond($cond){
-		$variable = uniqid();
-		$method = $cond->name->parts[0];
-		$methodCall = $this->processMethod($cond);
-		var_dump($cond);
-		return end($methodCall);
-		
+		$this->pushFunctionToCallStack($name,$calledNode);
+		$function = $this->functions[$name];
+		$contents = $this->printStatements($function['contents']);
+		$this->popFunctionInCallStack();
+		$contents = str_replace(
+			$function['params'],
+			$paramAssignments,
+			$contents
+		);
+		$contents = str_replace('__RETURN__',$hook['returnVar'],$contents);
+		return $contents;
 	}
 	
 	public function processMethod($method,$assignTo = null){
@@ -311,30 +319,24 @@ class Printer {
 			$text[] = '~\QueryExternalServer(' . $args[0][0] . '|' . $retVar . ')~';
 		}
 		else if(isset($this->functions[$name])){
-			$def = &$this->functions[$name];
-			$returnTo = self::getUID();
+			$def = $this->functions[$name];
 			$paramAssignments = array();
-			foreach($args as $key => &$arg){
+			foreach($args as $key => $arg){
 				if(isset($def['params'][$key])){
 					if($arg[0] == $arg[1] && $method->args[$key]->value->getType() != 'Expr_Variable'){
 						$_tmpUid = self::getUID();
 						$text[] = '~\SetVar('.$_tmpUid.'|'.$arg[0].')~';
 						$arg[0] = $_tmpUid;
 					}
-					$paramAssignments[$def['params'][$key]] = $arg[0];
+					$paramAssignments[] = $arg[0];
 				}
 			}
-			$text[] = '~\SetVar(' . $def['label'] . '_returnTo|' . $returnTo . ')~';
-			$text[] = '~\Goto(' . $def['label'] . ')~';
-			$text[] = '~\Label(' . $returnTo . ')~';
-			$def['hooks'][] = array(
-				'returnTo' => $returnTo,
-				'paramAssignments' => $paramAssignments,
-				'returnVar' => $retVar
+			$text[] = $this->buildFunction(
+				$name,
+				$paramAssignments,
+				$retVar,
+				$method
 			);
-			//if(!$assignTo){
-			//	return implode("\n",$text);
-			//}
 		}
 		else {
 			$ret =  '~\\' . $name . '(';
@@ -364,7 +366,7 @@ class Printer {
 	}
 	
 	protected function _throwErrorForNode($message,$node){
-		throw new Exception('PHP Error: ' . $message . ' In ' . $this->script . ' on line ' . $node->getLine() . '.');
+		throw new Exception('PHP Error: ' . $message . "\nIn " . $this->script . ' on line ' . $node->getLine() . '.');
 	}
 }
 

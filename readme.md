@@ -49,6 +49,7 @@ the call script from the code inside script.php.
 1. Classes
 2. All of PHPs built in functions, for obvious reasons.
 3. Variable concatenating as arguments to functions and variable assignment.
+4. Variable reassignment to another variable.
 
 ##What functions can I use?
 1. file\_get_contents
@@ -66,31 +67,40 @@ To make a function, simply define it like you would
 any other PHP function. Then, later in your PHP
 code, you can make a call to your PHP function.
 
-One caveat, however, is RETURN is not implemented.
-The reason for this is because variables cannot be
+There are however some pitfalls in my implementation.
+
+Being able to return a value using the _return_ construct is
+not implemented. The reason for this is because variables cannot be
 assigned to other variables. To work around this,
-instead of calling RETURN, assign the value of $\__RETURN\__
-to the value you want your function to return.
-Also, this means that you cannot end the control
-flow of the function by using RETURN.
+instead of using _return_, assign the value you wish to
+return to the variable $\__RETURN__.
 
-###What if I really, really want to assign the value of variable to that of another variable?
-The only work around that I've seen is to create a loopback
-server that prints the value of whatever is passed to \_GET and
-then make a remote call to your server.
+Recursively nesting functions is also not supported. Take this example
 
-Your server would have the following code:
-
-    echo $_GET['input'];
+    function one(){
+        /**
+         * This is not okay because this
+         * will call three, wich will call
+         * two, which will lead us back to one.
+         * This will create an infinite loop.
+         * In a more robust language, this is
+         * not a problem. However, PhoneNotify's
+         * CallScript language is far from it.
+         */
+        three();
+    }
     
-End then your Call Script would have the following command:
-
-    $myFirstVar = 'Hello.';
-    $myNewVar = file\_get_contents('http://myserver/loopback.php?input=[myFirstVar]');
+    function two(){
+        // This is okay.
+        one();
+    }
     
-###Why don't you just do this for us on the backend and use your own server?
-Because making a remote call isn't light and will slow down the
-execution of the script.
+    function three(){
+        // This is okay.
+        two();
+    }
+    
+    three();
 
 ##What about all the other PhoneNotify functions?
 Those are supported too, you just have to use them
@@ -120,6 +130,25 @@ This would result in the following PhoneNotify script:
 
     ~\MyBogusFunction()~
     
+
+##What if I want to assign the value of variable to that of another variable?
+The only work around that I've seen is to create a loopback
+server that prints the value of whatever is passed to _GET and
+then make a remote call to your server.
+
+Your server would have the following code:
+
+    echo $_GET['input'];
+
+End then your Call Script would have the following command:
+
+    $myFirstVar = 'Hello.';
+    $myNewVar = file\_get_contents('http://myserver/loopback.php?input=[myFirstVar]');
+
+###Why don't you just do this for us on the backend and use your own server?
+Because making a remote call isn't light and will slow down the
+execution of the script.
+    
 ##Notes
 This program is highly experimental and still in development.
 I make no guarantee to its performance.
@@ -128,6 +157,12 @@ I don't plan on maintaining this code; updates to this project
 will be little to none. I wrote this up quickly
 so I could write complex PhoneNotify call scripts with
 logical visual flow.
+
+Lastly, I am fully 100% aware that my code is far from beautiful.
+I wrote it as quickly as possible and I don't expect to get any
+awards for Code Cleanliness. Also, I apologize if you decide to
+look at my code and you are quickly disgusted or confused. Maybe
+in some free time I will go back through and clean things up.
 
 ##License
 This work is licensed under the Creative Commons Attribution-NonCommercial 3.0 Unported License. To view a copy of this license, visit http://creativecommons.org/licenses/by-nc/3.0/ or send a letter to Creative Commons, 444 Castro Street, Suite 900, Mountain View, California, 94041, USA.
