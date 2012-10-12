@@ -25,6 +25,7 @@ the call script from the code inside script.php.
     echo "Hello $name, did you know that your account balance is" . file\_get_contents('http://myserver.com') . '?';
 
 3. if/else conditionals comparing by equals and not equals.
+4. if/else conditionals with and/or
 4. Variable assignment
 5. Nested Expressions
 
@@ -37,13 +38,12 @@ the call script from the code inside script.php.
 7. file\_get_contents
 
 ##What's not supported but my have support in the future?
-1. Double and/or conditionals
-2. Native Variable Increasing
+1. Native Variable Increasing
 
     $i++
-    
-3. Do/While loops
-4. break/continue statements in while loops.
+3. and/or conditionals in while loops
+2. Do/While loops
+3. break/continue statements in while loops.
 
 ##What's not supported and never will be?
 1. Classes

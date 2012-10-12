@@ -154,35 +154,60 @@ class Printer {
 		return $node->value;
 	}
 	
+	public function condHelper($node,$gotoTrue,$gotoFalse){
+		$ret = array();
+		if($node->getType() == 'Expr_Equal' || $node->getType() == 'Expr_NotEqual'){
+			$methodCallLeft = $this->printStatement($node->left,true);
+			$methodCallRight = $this->printStatement($node->right,true);
+			if(is_array($methodCallLeft)){
+				$ret[] = $methodCallLeft[1];
+				$condVarLeft = $methodCallLeft[0];
+			}
+			else {
+				$condVarLeft = $methodCallLeft;
+			}
+			if(is_array($methodCallRight)){
+				$ret[] = $methodCallRight[1];
+				$condVarRight = $methodCallRight[0];
+			}
+			else {
+				$condVarRight = $methodCallRight;
+			}
+			if($node->getType() == 'Expr_Equal'){
+				$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $gotoTrue . ')~';
+				if($gotoFalse){
+					$ret[] = '~\Goto(' . $gotoFalse . ')~';
+				}
+			}
+			else if($node->getType() == 'Expr_NotEqual'){
+				$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $gotoFalse . ')~';
+				if($gotoTrue){
+					$ret[] = '~\Goto(' . $gotoTrue . ')~';
+				}
+			}
+		}
+		else if($node->getType() == 'Expr_BooleanOr'){
+			$orLabel = self::getUID();
+			$ret[] = $this->condHelper($node->left,$gotoTrue,$orLabel);
+			$ret[] = '~\Label(' . $orLabel . ')~';
+			$ret[] = $this->condHelper($node->right,$gotoTrue,$gotoFalse);
+		}
+		else if($node->getType() == 'Expr_BooleanAnd'){
+			$andLabel = self::getUID();
+			$ret[] = $this->condHelper($node->left,$andLabel,$gotoFalse);
+			$ret[] = '~\Label(' . $andLabel . ')~';
+			$ret[] = $this->condHelper($node->right,$gotoTrue,$gotoFalse);
+		}
+		return implode("\n",$ret);
+	}
+	
 	public function print_Stmt_If($node){
+		//var_dump($node);
 		$ret = array();
 		$labelStatement = self::getUID('lbl_if_statement');
 		$labelEnd = self::getUID('lbl_if_end');
 		$labelTotalEnd = self::getUID('lbl_if_total_end');
-		$methodCallLeft = $this->printStatement($node->cond->left,true);
-		$methodCallRight = $this->printStatement($node->cond->right,true);
-		if(is_array($methodCallLeft)){
-			$ret[] = $methodCallLeft[1];
-			$condVarLeft = $methodCallLeft[0];
-		}
-		else {
-			$condVarLeft = $methodCallLeft;
-		}
-		if(is_array($methodCallRight)){
-			$ret[] = $methodCallRight[1];
-			$condVarRight = $methodCallRight[0];
-		}
-		else {
-			$condVarRight = $methodCallRight;
-		}
-		if($node->cond->getType() == 'Expr_Equal'){
-			$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $labelStatement . ')~';
-			$ret[] = '~\Goto(' . $labelEnd . ')~';
-		}
-		else if($node->cond->getType() == 'Expr_NotEqual'){
-			$ret[] = '~\GotoIf(' . $condVarLeft . '|' . $condVarRight . '|' . $labelEnd . ')~';
-			$ret[] = '~\Goto(' . $labelStatement . ')~';
-		}
+		$ret[] = $this->condHelper($node->cond,$labelStatement,$labelEnd);
 		$ret[] = '~\Label(' . $labelStatement . ')~';
 		$ret[] = $this->printStatements($node->stmts);
 		$ret[] = '~\Goto(' . $labelTotalEnd . ')~';
@@ -265,7 +290,7 @@ class Printer {
 			$paramAssignments,
 			$contents
 		);
-		$contents = str_replace('__RETURN__',$hook['returnVar'],$contents);
+		$contents = str_replace('__RETURN__',$retVar,$contents);
 		return $contents;
 	}
 	
